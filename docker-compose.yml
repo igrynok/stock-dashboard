@@ -1,0 +1,20 @@
+# docker-compose.yml
+version: "3.8"
+services:
+  backend:
+    build: ./backend
+    container_name: stock-backend
+    environment:
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: stock-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

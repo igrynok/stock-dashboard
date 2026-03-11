@@ -1,0 +1,20 @@
+# backend/Dockerfile
+FROM python:3.11-slim AS base
+WORKDIR /app
+
+# dependencies layer, cacheable
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    adduser --disabled-password --gecos '' appuser
+
+# application layer
+COPY main.py .
+USER appuser
+
+# expose & entry
+EXPOSE 8000
+ENV FINNHUB_API_KEY=""
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost:8000/ || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
