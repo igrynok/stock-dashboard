@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { StockData } from "../types";
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
@@ -18,13 +18,7 @@ export function useStockWebSocket(ticker: string): UseStockWebSocketReturn {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
 
-  const reconnect = () => {
-    if (!isMountedRef.current) return;
-    connectWebSocket();
-  };
-
-  const connectWebSocket = () => {
-    // Clean up old connection
+  const connectWebSocket = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -64,7 +58,7 @@ export function useStockWebSocket(ticker: string): UseStockWebSocketReturn {
             setLastUpdated(new Date());
             setStatus("connected");
           }
-        } catch (e) {
+        } catch {
           setStatus("error");
         }
       };
@@ -85,16 +79,20 @@ export function useStockWebSocket(ticker: string): UseStockWebSocketReturn {
           }, 3000);
         }
       };
-    } catch (e) {
+    } catch {
       if (isMountedRef.current) {
         setStatus("error");
       }
     }
-  };
+  }, [ticker]); // Recreate the function only if the ticker changes
+
+  const reconnect = useCallback(() => {
+    if (!isMountedRef.current) return;
+    connectWebSocket();
+  }, [connectWebSocket]);
 
   useEffect(() => {
     isMountedRef.current = true;
-    setData(null);
     connectWebSocket();
 
     return () => {
@@ -107,7 +105,7 @@ export function useStockWebSocket(ticker: string): UseStockWebSocketReturn {
         clearTimeout(reconnectTimerRef.current);
       }
     };
-  }, [ticker]);
+  }, [connectWebSocket]); 
 
   return { data, status, lastUpdated, reconnect };
 }

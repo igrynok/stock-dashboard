@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 import finnhub
 import requests
@@ -89,9 +89,11 @@ def fetch_stock_data(ticker: str) -> dict:
 def root():
     return {"status": "ok"}
 
+
 @app.get("/stock/{ticker}")
 def get_stock(ticker: str):
     return fetch_stock_data(ticker.upper())
+
 
 @app.websocket("/ws/{ticker}")
 async def websocket_endpoint(websocket: WebSocket, ticker: str):
@@ -106,7 +108,7 @@ async def websocket_endpoint(websocket: WebSocket, ticker: str):
             logger.info(f"Sent initial data for {ticker}")
         else:
             logger.warning(f"Failed to fetch initial data for {ticker}: {data}")
-        
+
         # Then send updates every 10 seconds
         while True:
             await asyncio.sleep(10)

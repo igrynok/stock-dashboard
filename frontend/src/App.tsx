@@ -19,7 +19,14 @@ function formatMarketCap(value: number): string {
   return `$${value.toLocaleString()}`;
 }
 
-const CustomTooltip = ({ active, payload }: any) => {
+interface TooltipPayload {
+  value: number;
+  payload: {
+    time: string;
+  };
+}
+
+const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) => {
   if (active && payload && payload.length) {
     return (
       <div style={{
@@ -65,8 +72,6 @@ function StockCard({ ticker }: StockCardProps) {
   const isPositive = data.change >= 0;
   const priceColor = isPositive ? "#c8f0a0" : "#f07070";
   const chartColor = isPositive ? "#c8f0a0" : "#f07070";
-  const minPrice = Math.min(...data.history.map(h => h.price));
-  const maxPrice = Math.max(...data.history.map(h => h.price));
 
   return (
     <div style={{

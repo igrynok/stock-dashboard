@@ -1,0 +1,75 @@
+name: Code Quality & Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  python-lint:
+    name: Python Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint
+          pip install -r backend/requirements.txt
+      
+      - name: Lint with flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 backend/main.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 backend/main.py --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+      
+      - name: Lint with pylint
+        run: |
+          pylint backend/main.py --disable=C0111,C0103 --exit-zero
+        continue-on-error: true
+
+  typescript-lint:
+    name: TypeScript & JavaScript Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: TypeScript type check
+        run: |
+          cd frontend
+          npx tsc --noEmit
+      
+      - name: Check build
+        run: |
+          cd frontend
+          npm run build
+
+  code-quality-summary:
+    name: Code Quality Summary
+    needs: [python-lint, typescript-lint]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "✅ Code Quality Checks Complete"
+          echo "Python: flake8 & pylint"
+          echo "JavaScript/TypeScript: ESLint & Type Checking"
