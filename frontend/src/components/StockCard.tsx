@@ -10,6 +10,13 @@ import {
 } from "recharts";
 import { TrendingUp, TrendingDown, Wifi, WifiOff } from "lucide-react";
 
+// Hex values kept only for recharts SVG props that don't accept CSS classes
+const CHART_GREEN = "#c8f0a0";
+const CHART_RED = "#f07070";
+const CHART_MUTED = "#444";
+const CHART_AXIS = "#1a1a2e";
+const CHART_REF_LINE = "#2a2a40";
+
 function formatMarketCap(value: number): string {
   if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
@@ -19,24 +26,15 @@ function formatMarketCap(value: number): string {
 
 interface TooltipPayload {
   value: number;
-  payload: {
-    time: string;
-  };
+  payload: { time: string };
 }
 
 const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) => {
   if (active && payload && payload.length) {
     return (
-      <div style={{
-        background: "#0a0a0f",
-        border: "1px solid #1e1e2e",
-        padding: "8px 14px",
-        fontFamily: "'Space Mono', monospace",
-        fontSize: "12px",
-        color: "#e2e2f0",
-      }}>
-        <div style={{ color: "#888" }}>{payload[0]?.payload?.time}</div>
-        <div style={{ color: "#c8f0a0", fontWeight: 700 }}>${payload[0]?.value?.toFixed(2)}</div>
+      <div className="border border-brand-border bg-brand-dark px-3.5 py-2 font-mono text-xs text-brand-text">
+        <div className="text-[#888]">{payload[0]?.payload?.time}</div>
+        <div className="font-bold text-brand-green">${payload[0]?.value?.toFixed(2)}</div>
       </div>
     );
   }
@@ -52,80 +50,34 @@ export function StockCard({ ticker }: StockCardProps) {
 
   if (!data || status !== "connected") {
     return (
-      <div style={{
-        background: "#0a0a14",
-        border: "1px solid #1a1a28",
-        borderRadius: "12px",
-        padding: "24px",
-        textAlign: "center",
-        color: "#444",
-        fontFamily: "'Space Mono', monospace",
-        fontSize: "12px",
-      }}>
+      <div className="rounded-xl border border-brand-border bg-brand-panel p-6 text-center font-mono text-xs text-[#444]">
         {status === "connecting" ? "LOADING..." : "OFFLINE"}
       </div>
     );
   }
 
   const isPositive = data.change >= 0;
-  const priceColor = isPositive ? "#c8f0a0" : "#f07070";
-  const chartColor = isPositive ? "#c8f0a0" : "#f07070";
+  const accentColor = isPositive ? CHART_GREEN : CHART_RED;
+  const accentClass = isPositive ? "text-brand-green" : "text-brand-red";
 
   return (
-    <div style={{
-      background: "#0a0a14",
-      border: "1px solid #1a1a28",
-      borderRadius: "12px",
-      padding: "20px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "16px",
-    }}>
+    <div className="flex flex-col gap-4 rounded-xl border border-brand-border bg-brand-panel p-5">
+
       {/* Header */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-      }}>
+      <div className="flex items-start justify-between">
         <div>
-          <div style={{
-            fontSize: "12px",
-            fontFamily: "'Space Mono', monospace",
-            color: "#555",
-            letterSpacing: "0.1em",
-            marginBottom: "4px",
-          }}>
+          <div className="mb-1 font-mono text-xs tracking-widest text-[#555]">
             {data.exchange}
           </div>
-          <h3 style={{
-            fontSize: "18px",
-            fontWeight: 700,
-            margin: 0,
-            color: "#e2e2f0",
-          }}>
+          <h3 className="m-0 text-lg font-bold text-brand-text">
             {data.symbol}
           </h3>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{
-            fontSize: "24px",
-            fontWeight: 700,
-            color: "#e2e2f0",
-            lineHeight: 1,
-          }}>
+        <div className="text-right">
+          <div className="text-2xl font-bold leading-none text-brand-text">
             ${data.price.toFixed(2)}
           </div>
-          <div style={{
-            fontSize: "13px",
-            fontWeight: 600,
-            color: priceColor,
-            fontFamily: "'Space Mono', monospace",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            justifyContent: "flex-end",
-            marginTop: "4px",
-          }}>
+          <div className={`mt-1 flex items-center justify-end gap-1 font-mono text-[13px] font-semibold ${accentClass}`}>
             {isPositive ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
             {isPositive ? "+" : ""}{data.change.toFixed(2)} ({data.changePercent.toFixed(2)}%)
           </div>
@@ -133,40 +85,36 @@ export function StockCard({ ticker }: StockCardProps) {
       </div>
 
       {/* Chart */}
-      <div style={{ height: "120px" }}>
+      <div className="h-[120px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data.history} margin={{ top: 5, right: 0, left: -35, bottom: 0 }}>
             <defs>
               <linearGradient id={`grad-${ticker}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={chartColor} stopOpacity={0.2} />
-                <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                <stop offset="5%" stopColor={accentColor} stopOpacity={0.2} />
+                <stop offset="95%" stopColor={accentColor} stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
               dataKey="time"
-              tick={{ fontFamily: "'Space Mono', monospace", fontSize: 9, fill: "#444" }}
-              axisLine={{ stroke: "#1a1a2e" }}
+              tick={{ fontFamily: "'Space Mono', monospace", fontSize: 9, fill: CHART_MUTED }}
+              axisLine={{ stroke: CHART_AXIS }}
               tickLine={false}
               interval={Math.floor(data.history.length / 3)}
             />
             <YAxis
               domain={["auto", "auto"]}
-              tick={{ fontFamily: "'Space Mono', monospace", fontSize: 9, fill: "#444" }}
+              tick={{ fontFamily: "'Space Mono', monospace", fontSize: 9, fill: CHART_MUTED }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) => `$${v.toFixed(0)}`}
               width={45}
             />
             <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine
-              y={data.prevClose}
-              stroke="#2a2a40"
-              strokeDasharray="4 4"
-            />
+            <ReferenceLine y={data.prevClose} stroke={CHART_REF_LINE} strokeDasharray="4 4" />
             <Area
               type="monotone"
               dataKey="price"
-              stroke={chartColor}
+              stroke={accentColor}
               strokeWidth={2}
               fill={`url(#grad-${ticker})`}
               dot={false}
@@ -176,90 +124,46 @@ export function StockCard({ ticker }: StockCardProps) {
       </div>
 
       {/* Stats */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: "12px",
-        fontSize: "11px",
-      }}>
+      <div className="grid grid-cols-2 gap-3 text-[11px]">
+        {[
+          { label: "OPEN", value: data.open },
+          { label: "HIGH", value: data.high },
+          { label: "PREV CLOSE", value: data.prevClose },
+          { label: "LOW", value: data.low },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div className="mb-0.5 font-mono text-[#555]">{label}</div>
+            <div className="font-semibold text-brand-text">${value.toFixed(2)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Market Cap & Last Updated */}
+      <div className="flex items-center justify-between border-t border-brand-border pt-3">
         <div>
-          <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", marginBottom: "2px" }}>
-            OPEN
-          </div>
-          <div style={{ fontWeight: 600, color: "#e2e2f0" }}>
-            ${data.open.toFixed(2)}
-          </div>
+          <div className="mb-1 font-mono text-[10px] text-[#555]">MARKET CAP</div>
+          <div className="text-[13px] font-semibold text-brand-text">{formatMarketCap(data.marketCap)}</div>
         </div>
-        <div>
-          <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", marginBottom: "2px" }}>
-            HIGH
-          </div>
-          <div style={{ fontWeight: 600, color: "#e2e2f0" }}>
-            ${data.high.toFixed(2)}
-          </div>
-        </div>
-        <div>
-          <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", marginBottom: "2px" }}>
-            PREV CLOSE
-          </div>
-          <div style={{ fontWeight: 600, color: "#e2e2f0" }}>
-            ${data.prevClose.toFixed(2)}
-          </div>
-        </div>
-        <div>
-          <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", marginBottom: "2px" }}>
-            LOW
-          </div>
-          <div style={{ fontWeight: 600, color: "#e2e2f0" }}>
-            ${data.low.toFixed(2)}
+        <div className="text-right">
+          <div className="mb-1 font-mono text-[10px] text-[#555]">LAST UPDATE</div>
+          <div className="flex items-center justify-end gap-1.5 font-mono text-[11px]">
+            {status === "connected" ? (
+              <>
+                <Wifi size={12} className="text-brand-green" />
+                <span className="text-brand-green">
+                  {lastUpdated ? lastUpdated.toLocaleTimeString() : "--:--:--"}
+                </span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={12} className="text-brand-red" />
+                <span className="text-brand-red">OFFLINE</span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Market Cap & Last Updated */}
-      <div style={{
-        paddingTop: "12px",
-        borderTop: "1px solid #1a1a28",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}>
-        <div>
-           <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", fontSize: "10px", marginBottom: "4px" }}>
-            MARKET CAP
-          </div>
-          <div style={{ fontWeight: 600, color: "#e2e2f0", fontSize: "13px" }}>
-            {formatMarketCap(data.marketCap)}
-          </div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-            <div style={{ color: "#555", fontFamily: "'Space Mono', monospace", fontSize: "10px", marginBottom: "4px" }}>
-              LAST UPDATE
-            </div>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "11px",
-              fontFamily: "'Space Mono', monospace",
-              justifyContent: "flex-end"
-            }}>
-              {status === "connected" ? (
-                <>
-                  <Wifi size={12} style={{ color: "#c8f0a0" }} />
-                  <span style={{ color: "#c8f0a0" }}>
-                    {lastUpdated ? lastUpdated.toLocaleTimeString() : "--:--:--"}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <WifiOff size={12} style={{ color: "#f07070" }} />
-                  <span style={{ color: "#f07070" }}>OFFLINE</span>
-                </>
-              )}
-            </div>
-        </div>
-      </div>
     </div>
   );
 }

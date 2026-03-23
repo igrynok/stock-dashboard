@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -71,11 +72,6 @@ def fetch_stock_data(ticker: str) -> dict:
             "exchange": profile.get("exchange", ""),
             "currency": profile.get("currency", "USD"),
             "marketCap": (profile.get("marketCapitalization") or 0) * 1e6,
-            "volume": 0,
-            "avgVolume": 0,
-            "peRatio": 0,
-            "week52High": 0,
-            "week52Low": 0,
             "history": history,
             "timestamp": datetime.now().isoformat(),
             "error": None,
@@ -101,8 +97,10 @@ async def websocket_endpoint(websocket: WebSocket, ticker: str):
     logger.info(f"WebSocket connected for {ticker}")
     ticker = ticker.upper()
     try:
+        loop = asyncio.get_event_loop()
+
         # Send initial data immediately
-        data = fetch_stock_data(ticker)
+        data = await loop.run_in_executor(None, functools.partial(fetch_stock_data, ticker))
         if data and not data.get("error"):
             await websocket.send_text(json.dumps(data))
             logger.info(f"Sent initial data for {ticker}")
@@ -113,15 +111,15 @@ async def websocket_endpoint(websocket: WebSocket, ticker: str):
         while True:
             await asyncio.sleep(10)
             try:
-                data = fetch_stock_data(ticker)
-                if data and not data.get("error"):
-                    await websocket.send_text(json.dumps(data))
-                    logger.info(f"Sent update for {ticker}")
-                else:
-                    logger.warning(f"No valid data for {ticker}: {data}")
+                data = await loop.run_in_executor(None, functools.partial(fetch_stock_data, ticker))
             except Exception as fetch_error:
-                # Only log, don't try to send on potentially closed connection
                 logger.error(f"Error fetching {ticker}: {fetch_error}", exc_info=False)
+                continue
+            if data and not data.get("error"):
+                await websocket.send_text(json.dumps(data))
+                logger.info(f"Sent update for {ticker}")
+            else:
+                logger.warning(f"No valid data for {ticker}: {data}")
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for {ticker}")
     except Exception as e:
