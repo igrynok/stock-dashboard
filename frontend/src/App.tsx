@@ -1,9 +1,18 @@
+import { useState } from "react";
 import { TrendingUp, Wifi } from "lucide-react";
 import { StockCard } from "./components/StockCard";
-
-const TICKERS = ["AAPL"];
+import { SearchBar } from "./components/SearchBar";
 
 export default function App() {
+
+  const [tickers, setTickers] = useState<string[]>(["AAPL"]);
+
+  const handleAddTicker = (newTicker: string) => {
+    if (!tickers.includes(newTicker)) {
+      setTickers((prev) => [...prev, newTicker]); 
+    }
+  };
+
   return (
     <div className="min-h-screen bg-brand-dark text-brand-text font-sans selection:bg-brand-green selection:text-black">
       
@@ -29,10 +38,12 @@ export default function App() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-[1600px] p-8">
+        
+        <SearchBar onAddTicker={handleAddTicker} />
 
         {/* Stock Cards Grid */}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6">
-          {TICKERS.map((ticker: string) => (
+          {tickers.map((ticker) => (
             <StockCard key={ticker} ticker={ticker} />
           ))}
         </div>

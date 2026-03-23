@@ -87,23 +87,24 @@ After startup:
 
 ## Features
 
+- **Ticker search bar** — type any ticker symbol and press Enter or click the search button to add it to the dashboard
+- **Multi-stock dashboard** — track multiple stocks simultaneously, each with its own live WebSocket connection
 - **Real-time streaming** via WebSocket (updates every 10 seconds)
 - **Intraday price chart** with area fill and reference line at previous close
 - **Key statistics**: open, previous close, day high/low, market cap
 - **Live connection status** indicator with timestamp of last update
 - **Dark, terminal-style UI** using Space Mono + Syne fonts
-- Single-stock view (configure via `DISPLAY_TICKERS` in [frontend/src/App.tsx](frontend/src/App.tsx))
 
 ---
 
 ## Supported tickers
 
-The dashboard currently displays **AAPL** (configurable). Works with any ticker supported by Finnhub:
+Works with any ticker supported by Finnhub. Search directly from the dashboard:
 * US stocks: `AAPL`, `MSFT`, `GOOGL`, `NVDA`, `TSLA`, `AMZN`, etc.
 * ETFs: `SPY`, `QQQ`, `VTI`, `IVV`
 * International: `ASML`, `TSM`, `BABA`
 
-To display different stocks, edit `DISPLAY_TICKERS` in [frontend/src/App.tsx](frontend/src/App.tsx#L13).
+The dashboard starts with **AAPL** by default. Use the search bar to add more tickers at runtime.
 
 ---
 
