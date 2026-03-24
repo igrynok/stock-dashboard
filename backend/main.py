@@ -3,62 +3,39 @@ import functools
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import finnhub
-import requests
+import websockets as ws_lib
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Stock Dashboard API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
-client = finnhub.Client(api_key=FINNHUB_API_KEY)
+finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+
+# ── In-memory state ───────────────────────────────────────────────
+# Latest snapshot per ticker (price, change, history, …)
+snapshots: dict[str, dict] = {}
+# Accumulated trade history per ticker [{time, price}, …]
+histories: dict[str, list] = {}
+# Frontend WebSocket clients per ticker
+subscribers: dict[str, set[WebSocket]] = {}
+# Tickers currently subscribed on Finnhub WS
+subscribed_tickers: set[str] = set()
+# Live Finnhub WebSocket connection
+finnhub_ws_conn = None
 
 
-def fetch_intraday_history(ticker: str) -> list:
-    """Fetch intraday chart data from Yahoo Finance chart API (no auth needed)."""
+# ── Finnhub REST: initial snapshot ───────────────────────────────
+
+def fetch_initial_snapshot(ticker: str) -> dict:
     try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-        params = {"interval": "5m", "range": "1d"}
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, params=params, headers=headers, timeout=10)
-        data = r.json()
-
-        result = data["chart"]["result"][0]
-        timestamps = result["timestamp"]
-        closes = result["indicators"]["quote"][0]["close"]
-
-        history = []
-        for t, c in zip(timestamps, closes):
-            if c is not None:
-                history.append({
-                    "time": datetime.fromtimestamp(t).strftime("%H:%M"),
-                    "price": round(float(c), 2),
-                })
-        return history
-    except Exception as e:
-        logger.warning(f"Chart history fetch failed for {ticker}: {e}")
-        return []
-
-
-def fetch_stock_data(ticker: str) -> dict:
-    try:
-        quote = client.quote(ticker)
-        profile = client.company_profile2(symbol=ticker)
-        history = fetch_intraday_history(ticker)
-
+        quote = finnhub_client.quote(ticker)
+        profile = finnhub_client.company_profile2(symbol=ticker)
         return {
             "symbol": ticker,
             "name": profile.get("name", ticker),
@@ -72,14 +49,97 @@ def fetch_stock_data(ticker: str) -> dict:
             "exchange": profile.get("exchange", ""),
             "currency": profile.get("currency", "USD"),
             "marketCap": (profile.get("marketCapitalization") or 0) * 1e6,
-            "history": history,
+            "history": [],
             "timestamp": datetime.now().isoformat(),
             "error": None,
         }
     except Exception as e:
-        logger.error(f"Error fetching {ticker}: {e}")
-        return {"symbol": ticker.upper(), "error": str(e)}
+        logger.error(f"Error fetching initial data for {ticker}: {e}")
+        return {"symbol": ticker, "error": str(e)}
 
+
+# ── Finnhub WebSocket: trade handler ─────────────────────────────
+
+async def handle_finnhub_message(message: str) -> None:
+    msg = json.loads(message)
+    if msg.get("type") != "trade":
+        return
+
+    for trade in msg.get("data", []):
+        ticker = trade["s"]
+        if ticker not in snapshots:
+            continue
+
+        price = round(float(trade["p"]), 2)
+        time_str = datetime.fromtimestamp(trade["t"] / 1000).strftime("%H:%M:%S")
+
+        snapshot = snapshots[ticker]
+        prev_close = snapshot.get("prevClose", price)
+        change = round(price - prev_close, 2)
+        change_pct = round((change / prev_close * 100) if prev_close else 0, 2)
+
+        snapshot["price"] = price
+        snapshot["change"] = change
+        snapshot["changePercent"] = change_pct
+        snapshot["high"] = max(snapshot.get("high", price), price)
+        snapshot["low"] = min(snapshot.get("low", price), price)
+        snapshot["timestamp"] = datetime.now().isoformat()
+
+        history = histories.setdefault(ticker, [])
+        history.append({"time": time_str, "price": price})
+        if len(history) > 500:
+            history.pop(0)
+        snapshot["history"] = history
+
+        # Broadcast to all frontend clients watching this ticker
+        dead: set[WebSocket] = set()
+        for client in subscribers.get(ticker, set()):
+            try:
+                await client.send_text(json.dumps(snapshot))
+            except Exception:
+                dead.add(client)
+        subscribers.get(ticker, set()).difference_update(dead)
+
+
+# ── Finnhub WebSocket: persistent connection loop ─────────────────
+
+async def finnhub_ws_loop() -> None:
+    global finnhub_ws_conn
+    url = f"wss://ws.finnhub.io?token={FINNHUB_API_KEY}"
+    while True:
+        try:
+            async with ws_lib.connect(url) as conn:
+                finnhub_ws_conn = conn
+                logger.info("Connected to Finnhub WebSocket")
+                for ticker in subscribed_tickers:
+                    await conn.send(json.dumps({"type": "subscribe", "symbol": ticker}))
+                async for message in conn:
+                    await handle_finnhub_message(message)
+        except Exception as e:
+            logger.error(f"Finnhub WS disconnected: {e}. Reconnecting in 5s...")
+            finnhub_ws_conn = None
+        await asyncio.sleep(5)
+
+
+# ── App lifespan ──────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(finnhub_ws_loop())
+    yield
+
+app = FastAPI(title="Stock Dashboard API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── HTTP endpoints ────────────────────────────────────────────────
 
 @app.get("/")
 def root():
@@ -88,43 +148,48 @@ def root():
 
 @app.get("/stock/{ticker}")
 def get_stock(ticker: str):
-    return fetch_stock_data(ticker.upper())
+    ticker = ticker.upper()
+    return snapshots.get(ticker) or fetch_initial_snapshot(ticker)
 
+
+# ── Frontend WebSocket endpoint ───────────────────────────────────
 
 @app.websocket("/ws/{ticker}")
-async def websocket_endpoint(websocket: WebSocket, ticker: str):
+async def websocket_endpoint(websocket: WebSocket, ticker: str) -> None:
     await websocket.accept()
-    logger.info(f"WebSocket connected for {ticker}")
     ticker = ticker.upper()
-    try:
+    logger.info(f"Frontend connected for {ticker}")
+
+    # Fetch initial snapshot if we don't have one yet
+    if ticker not in snapshots:
         loop = asyncio.get_event_loop()
-
-        # Send initial data immediately
-        data = await loop.run_in_executor(None, functools.partial(fetch_stock_data, ticker))
-        if data and not data.get("error"):
-            await websocket.send_text(json.dumps(data))
-            logger.info(f"Sent initial data for {ticker}")
-        else:
-            logger.warning(f"Failed to fetch initial data for {ticker}: {data}")
-
-        # Then send updates every 10 seconds
-        while True:
-            await asyncio.sleep(10)
-            try:
-                data = await loop.run_in_executor(None, functools.partial(fetch_stock_data, ticker))
-            except Exception as fetch_error:
-                logger.error(f"Error fetching {ticker}: {fetch_error}", exc_info=False)
-                continue
-            if data and not data.get("error"):
-                await websocket.send_text(json.dumps(data))
-                logger.info(f"Sent update for {ticker}")
-            else:
-                logger.warning(f"No valid data for {ticker}: {data}")
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for {ticker}")
-    except Exception as e:
-        logger.error(f"WebSocket error for {ticker}: {e}", exc_info=False)
-        try:
+        data = await loop.run_in_executor(None, functools.partial(fetch_initial_snapshot, ticker))
+        if data.get("error"):
+            logger.warning(f"Could not fetch data for {ticker}, closing connection")
             await websocket.close()
-        except Exception:
-            pass
+            return
+        snapshots[ticker] = data
+        histories[ticker] = []
+
+    # Subscribe to Finnhub WS for this ticker if not already
+    if ticker not in subscribed_tickers:
+        subscribed_tickers.add(ticker)
+        if finnhub_ws_conn:
+            try:
+                await finnhub_ws_conn.send(json.dumps({"type": "subscribe", "symbol": ticker}))
+                logger.info(f"Subscribed to Finnhub WS for {ticker}")
+            except Exception as e:
+                logger.warning(f"Could not subscribe to {ticker} on Finnhub WS: {e}")
+
+    # Register this frontend client and send current snapshot immediately
+    subscribers.setdefault(ticker, set()).add(websocket)
+    await websocket.send_text(json.dumps(snapshots[ticker]))
+
+    try:
+        # Hold the connection open; Finnhub WS loop handles all updates
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        logger.info(f"Frontend disconnected for {ticker}")
+    finally:
+        subscribers.get(ticker, set()).discard(websocket)
