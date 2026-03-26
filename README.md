@@ -59,6 +59,33 @@ There are two supported workflows: **local development** and **containerised dep
 
 This workflow lets you iterate on Python and React simultaneously.
 
+---
+
+## Running tests
+
+### Backend (pytest)
+
+Requires the venv to be active and Python 3.11:
+
+```bash
+cd backend
+python3.11 -m venv venv          # only needed once; skip if venv already exists
+source venv/bin/activate
+pip install -r requirements.txt  # installs pytest and pytest-asyncio
+python -m pytest tests/ -v
+```
+
+### Frontend (vitest)
+
+```bash
+cd frontend
+npm install                      # only needed once
+npm test                         # single run
+npm run test:watch               # re-runs on file changes
+```
+
+---
+
 ### 🐳 Docker / Compose (production‑like)
 
 Ensure you have [Docker](https://www.docker.com/) installed.
